@@ -172,8 +172,10 @@ func runSonar(c *cli.Context) (err error) {
 					log.Error().Err(err).Msg("could not publish ping")
 					continue
 				}
-
-				fmt.Print(".")
+				
+				if ping.Acked() {
+					fmt.Print(".")
+				}
 			}
 		}
 	} else {
@@ -198,7 +200,9 @@ func runSonar(c *cli.Context) (err error) {
 				continue
 			}
 
-			fmt.Print(".")
+			if ping.Acked() {
+				fmt.Print(".")
+			}
 		}
 	}
 }
@@ -219,9 +223,11 @@ func listen(c *cli.Context) (err error) {
 			var ping *sonar.Ping
 			if err = ping.Unmarshal(event.Data); err != nil {
 				log.Error().Err(err).Str("type", event.Type.String()).Str("mimetype", event.Mimetype.String()).Msg("could not unmarshal ping")
+				event.Nack()
 				continue
 			}
 			fmt.Println(ping.String())
+			event.Ack()
 		case <-quit:
 			return nil
 		}
