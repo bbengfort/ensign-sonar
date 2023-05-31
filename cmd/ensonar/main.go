@@ -11,6 +11,7 @@ import (
 	sonar "github.com/bbengfort/ensign-sonar"
 	"github.com/joho/godotenv"
 	"github.com/rotationalio/go-ensign"
+	api "github.com/rotationalio/go-ensign/api/v1beta1"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
@@ -172,9 +173,11 @@ func runSonar(c *cli.Context) (err error) {
 					log.Error().Err(err).Msg("could not publish ping")
 					continue
 				}
-				
-				if ping.Acked() {
+
+				if acked, err := ping.Acked(); err == nil && acked {
 					fmt.Print(".")
+				} else {
+					fmt.Print("+")
 				}
 			}
 		}
@@ -200,36 +203,40 @@ func runSonar(c *cli.Context) (err error) {
 				continue
 			}
 
-			if ping.Acked() {
+			if acked, err := ping.Acked(); err == nil && acked {
 				fmt.Print(".")
+			} else {
+				fmt.Print("+")
 			}
 		}
 	}
 }
 
 func listen(c *cli.Context) (err error) {
+	topic := c.String("topic")
+	log.Info().Str("topic", topic).Msg("starting listener")
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt)
+
 	var sub *ensign.Subscription
 	if sub, err = client.Subscribe(); err != nil {
 		return cli.Exit(err, 1)
 	}
 	defer sub.Close()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt)
-
 	for {
 		select {
+		case <-quit:
+			return nil
 		case event := <-sub.C:
-			var ping *sonar.Ping
+			ping := &sonar.Ping{}
 			if err = ping.Unmarshal(event.Data); err != nil {
 				log.Error().Err(err).Str("type", event.Type.String()).Str("mimetype", event.Mimetype.String()).Msg("could not unmarshal ping")
-				event.Nack()
+				event.Nack(api.Nack_DELIVER_AGAIN_NOT_ME)
 				continue
 			}
 			fmt.Println(ping.String())
-			event.Ack()
-		case <-quit:
-			return nil
 		}
 	}
 }
